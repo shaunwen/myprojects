@@ -18,6 +18,22 @@ local function is_dir(path)
   return vim.fn.isdirectory(path) == 1
 end
 
+local function ensure_valid_process_cwd()
+  local cwd = vim.uv.cwd()
+  if cwd and is_dir(cwd) then
+    return cwd
+  end
+
+  local fallback = normalize('~')
+  if not is_dir(fallback) then
+    return nil
+  end
+
+  pcall(vim.uv.chdir, fallback)
+  pcall(vim.cmd, 'cd ' .. vim.fn.fnameescape(fallback))
+  return fallback
+end
+
 local function has_git_dir(path)
   return vim.uv.fs_stat(path .. '/.git') ~= nil
 end
@@ -186,6 +202,12 @@ end
 
 function M.switch_project()
   local fzf = require('fzf-lua')
+  local picker_cwd = ensure_valid_process_cwd()
+  if not picker_cwd then
+    vim.notify('Unable to open project picker: current directory is invalid', vim.log.levels.ERROR)
+    return
+  end
+
   local projects = collect_projects()
 
   if #projects == 0 then
@@ -200,6 +222,7 @@ function M.switch_project()
 
   fzf.fzf_exec(entries, {
     prompt = 'Projects> ',
+    cwd = picker_cwd,
     fzf_opts = {
       ['--no-multi'] = true,
     },
