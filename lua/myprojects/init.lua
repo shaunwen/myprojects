@@ -118,8 +118,7 @@ local function close_buffers()
 end
 
 local function entry_for(path)
-  local name = vim.fn.fnamemodify(path, ':t')
-  return string.format('%s\t%s', path, name)
+  return vim.fn.fnamemodify(path, ':t')
 end
 
 local function build_project_lookup(projects)
@@ -202,9 +201,6 @@ function M.switch_project()
   fzf.fzf_exec(entries, {
     prompt = 'Projects> ',
     fzf_opts = {
-      ['--delimiter'] = '\t',
-      ['--nth'] = '2',
-      ['--with-nth'] = '2',
       ['--no-multi'] = true,
     },
     preview = function(args)
