@@ -122,8 +122,40 @@ local function entry_for(path)
   return string.format('%s\t%s', path, name)
 end
 
-local function selected_path(selected)
-  return selected[1] and selected[1]:match('^[^\t]+')
+local function build_project_lookup(projects)
+  local by_name = {}
+
+  for _, project in ipairs(projects) do
+    local name = vim.fn.fnamemodify(project, ':t')
+    by_name[name] = by_name[name] or project
+  end
+
+  return by_name
+end
+
+local function project_path_from_line(line, project_by_name)
+  if not line or line == '' then
+    return nil
+  end
+
+  local raw_path, name = line:match('^([^\t]+)\t(.+)$')
+  if raw_path and is_dir(raw_path) then
+    return raw_path
+  end
+
+  if name and project_by_name[name] then
+    return project_by_name[name]
+  end
+
+  if project_by_name[line] then
+    return project_by_name[line]
+  end
+
+  if is_dir(line) then
+    return normalize(line)
+  end
+
+  return nil
 end
 
 local function switch_to_project(path)
@@ -165,6 +197,7 @@ function M.switch_project()
   local entries = vim.tbl_map(function(project)
     return entry_for(project)
   end, projects)
+  local project_by_name = build_project_lookup(projects)
 
   fzf.fzf_exec(entries, {
     prompt = 'Projects> ',
@@ -175,7 +208,7 @@ function M.switch_project()
       ['--no-multi'] = true,
     },
     preview = function(args)
-      local cwd = args[1] and args[1]:match('^[^\t]+')
+      local cwd = project_path_from_line(args[1], project_by_name)
       if not cwd then
         return 'No project selected'
       end
@@ -211,9 +244,11 @@ function M.switch_project()
     end,
     actions = {
       ['default'] = function(selected)
-        local path = selected_path(selected)
+        local path = project_path_from_line(selected[1], project_by_name)
         if path then
           switch_to_project(path)
+        else
+          vim.notify('Unable to resolve selected project', vim.log.levels.WARN)
         end
       end,
     },
