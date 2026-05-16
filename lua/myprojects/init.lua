@@ -133,24 +133,64 @@ local function close_buffers()
   end
 end
 
-local function entry_for(path)
+local function project_name(path)
   return vim.fn.fnamemodify(path, ':t')
 end
 
-local function build_project_lookup(projects)
-  local by_name = {}
-
-  for _, project in ipairs(projects) do
-    local name = vim.fn.fnamemodify(project, ':t')
-    by_name[name] = by_name[name] or project
-  end
-
-  return by_name
+local function project_display_path(path)
+  return vim.fn.fnamemodify(path, ':~')
 end
 
-local function project_path_from_line(line, project_by_name)
+local function git_branch(path)
+  local branch = vim
+    .system({ 'git', '-C', path, 'branch', '--show-current' }, { text = true })
+    :wait()
+
+  if branch.code == 0 and branch.stdout and vim.trim(branch.stdout) ~= '' then
+    return vim.trim(branch.stdout)
+  end
+
+  local commit = vim
+    .system({ 'git', '-C', path, 'rev-parse', '--short', 'HEAD' }, { text = true })
+    :wait()
+
+  if commit.code == 0 and commit.stdout and vim.trim(commit.stdout) ~= '' then
+    return vim.trim(commit.stdout)
+  end
+
+  return ''
+end
+
+local function build_project_entries(projects)
+  local name_counts = {}
+  for _, project in ipairs(projects) do
+    local name = project_name(project)
+    name_counts[name] = (name_counts[name] or 0) + 1
+  end
+
+  local entries = {}
+  local by_entry = {}
+  for _, project in ipairs(projects) do
+    local name = project_name(project)
+    local entry = name
+    if name_counts[name] > 1 then
+      entry = string.format('%s  %s', name, project_display_path(project))
+    end
+
+    table.insert(entries, entry)
+    by_entry[entry] = project
+  end
+
+  return entries, by_entry
+end
+
+local function project_path_from_line(line, project_by_entry)
   if not line or line == '' then
     return nil
+  end
+
+  if project_by_entry[line] then
+    return project_by_entry[line]
   end
 
   local raw_path, name = line:match('^([^\t]+)\t(.+)$')
@@ -158,12 +198,8 @@ local function project_path_from_line(line, project_by_name)
     return raw_path
   end
 
-  if name and project_by_name[name] then
-    return project_by_name[name]
-  end
-
-  if project_by_name[line] then
-    return project_by_name[line]
+  if name and project_by_entry[name] then
+    return project_by_entry[name]
   end
 
   if is_dir(line) then
@@ -191,6 +227,17 @@ local function switch_to_project(path)
 
     vim.cmd('cd ' .. vim.fn.fnameescape(path))
 
+    local current_project = vim.fn.getcwd()
+    vim.g.myprojects_current_project = current_project
+    vim.g.myprojects_current_branch = git_branch(current_project)
+    vim.api.nvim_exec_autocmds('User', {
+      pattern = 'MyProjectsChanged',
+      data = {
+        path = current_project,
+        branch = vim.g.myprojects_current_branch,
+      },
+    })
+
     local ok, lualine = pcall(require, 'lualine')
     if ok then
       lualine.refresh()
@@ -215,10 +262,7 @@ function M.switch_project()
     return
   end
 
-  local entries = vim.tbl_map(function(project)
-    return entry_for(project)
-  end, projects)
-  local project_by_name = build_project_lookup(projects)
+  local entries, project_by_entry = build_project_entries(projects)
 
   fzf.fzf_exec(entries, {
     prompt = 'Projects> ',
@@ -227,7 +271,7 @@ function M.switch_project()
       ['--no-multi'] = true,
     },
     preview = function(args)
-      local cwd = project_path_from_line(args[1], project_by_name)
+      local cwd = project_path_from_line(args[1], project_by_entry)
       if not cwd then
         return 'No project selected'
       end
@@ -248,22 +292,28 @@ function M.switch_project()
         }, { text = true })
         :wait()
 
-      local parts = {}
+      local branch = git_branch(cwd)
+      local parts = {
+        'Project: ' .. project_name(cwd),
+        'Path: ' .. project_display_path(cwd),
+        'Branch: ' .. (branch ~= '' and branch or '-'),
+        '',
+      }
       if status.stdout and status.stdout ~= '' then
+        table.insert(parts, 'Status:')
         table.insert(parts, status.stdout)
       end
       if log.stdout and log.stdout ~= '' then
-        if #parts > 0 then
-          table.insert(parts, '')
-        end
+        table.insert(parts, '')
+        table.insert(parts, 'Recent commits:')
         table.insert(parts, log.stdout)
       end
 
-      return #parts > 0 and table.concat(parts, '\n') or cwd
+      return table.concat(parts, '\n')
     end,
     actions = {
       ['default'] = function(selected)
-        local path = project_path_from_line(selected[1], project_by_name)
+        local path = project_path_from_line(selected[1], project_by_entry)
         if path then
           switch_to_project(path)
         else
