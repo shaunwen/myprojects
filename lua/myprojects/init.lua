@@ -110,15 +110,19 @@ local function collect_projects()
   return projects
 end
 
+local function is_normal_buffer(bufnr)
+  return vim.api.nvim_buf_is_valid(bufnr)
+    and vim.api.nvim_buf_is_loaded(bufnr)
+    and vim.bo[bufnr].buftype == ''
+end
+
 local function modified_buffers()
   local modified = {}
 
   for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
-    if vim.api.nvim_buf_is_valid(bufnr) and vim.api.nvim_buf_is_loaded(bufnr) then
-      if vim.bo[bufnr].buftype == '' and vim.bo[bufnr].modified then
-        local name = vim.api.nvim_buf_get_name(bufnr)
-        table.insert(modified, name ~= '' and vim.fn.fnamemodify(name, ':~:.') or '[No Name]')
-      end
+    if is_normal_buffer(bufnr) and vim.bo[bufnr].modified then
+      local name = vim.api.nvim_buf_get_name(bufnr)
+      table.insert(modified, name ~= '' and vim.fn.fnamemodify(name, ':~:.') or '[No Name]')
     end
   end
 
@@ -127,7 +131,7 @@ end
 
 local function close_buffers()
   for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
-    if vim.api.nvim_buf_is_valid(bufnr) and vim.api.nvim_buf_is_loaded(bufnr) then
+    if is_normal_buffer(bufnr) then
       pcall(vim.api.nvim_buf_delete, bufnr, { force = true })
     end
   end

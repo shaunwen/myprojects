@@ -115,7 +115,7 @@ Type: `boolean`
 
 Default: `true`
 
-When enabled, loaded buffers are closed before switching to the selected project.
+When enabled, normal loaded buffers are closed before switching to the selected project.
 
 If any normal buffer has unsaved changes, switching is cancelled and a warning
 lists the modified buffers. This prevents accidental loss of local edits.
@@ -155,7 +155,7 @@ When a project is selected:
 
 1. `myprojects.nvim` checks for modified normal buffers.
 2. If modified buffers exist, it shows a warning and cancels the switch.
-3. If switching is allowed, it closes loaded buffers when `close_open_buffers`
+3. If switching is allowed, it closes normal loaded buffers when `close_open_buffers`
    is enabled.
 4. It changes Neovim's current working directory with `:cd`.
 5. It refreshes `lualine` when `lualine` is available.
